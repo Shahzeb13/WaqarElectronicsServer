@@ -5,7 +5,10 @@ import cookieParser from 'cookie-parser';
 import chalk from 'chalk';
 import authRoutes from './routes/auth.routes.js';
 import branchRoutes from './routes/branch.routes.js';
+import userRoutes from './routes/user.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
+import managerRoutes from './routes/manager.routes.js';
+import ownerRoutes from './routes/owner.routes.js';
 import { seedOwner } from './utils/seedOwner.js';
 
 // Load environment variables
@@ -30,8 +33,11 @@ app.get('/', (req: Request, res: Response) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/branches', branchRoutes);
+app.use('/api/owner/branches', branchRoutes);
+app.use('/api/owner/users', userRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/manager', managerRoutes);
+app.use('/api/owner', ownerRoutes);
 
 // Start server with a beautiful terminal UI
 app.listen(PORT, async () => {

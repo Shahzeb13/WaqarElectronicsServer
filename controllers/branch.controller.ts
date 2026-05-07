@@ -29,7 +29,7 @@ export const getAllBranches = async (_req: Request, res: Response) => {
     const branches = await prisma.branch.findMany({
       include: {
         manager: { select: { id: true, name: true, email: true } },
-        _count: { select: { users: true, stocks: true } },
+        _count: { select: { users: true, stockItems: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -45,13 +45,13 @@ export const getBranchById = async (req: Request, res: Response) => {
 
   try {
     const branch = await prisma.branch.findUnique({
-      where: { id },
+      where: { id: id as string },
       include: {
         manager: { select: { id: true, name: true, email: true, phone: true } },
         _count: { 
           select: { 
             users: true, 
-            stocks: true,
+            stockItems: true,
             sales: true 
           } 
         }

@@ -67,6 +67,7 @@ model User {
   resolvedClaims    Claim[]           @relation("ClaimResolvedBy")
   recoveries        Recovery[]        @relation("RecoveryEmployee")
 
+
   @@map("users")
 }
 
@@ -102,6 +103,8 @@ model StockItem {
   salePrice         Decimal  @map("sale_price") @db.Decimal(10, 2)
   quantity          Int      @default(0)
   lowStockThreshold Int      @default(5) @map("low_stock_threshold")
+  imageUrl          String?  @map("image_url")
+  imagePublicId     String?  @map("image_public_id")
   createdById       String   @map("created_by") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -221,6 +224,8 @@ model Sale {
   installmentMonths Int?       @map("installment_months")
   monthlyAmount     Decimal?   @map("monthly_amount") @db.Decimal(10, 2)
   downPayment       Decimal?   @map("down_payment") @db.Decimal(10, 2)
+  paidAmount      Decimal @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  remainingAmount Decimal @default(0) @map("remaining_amount") @db.Decimal(10, 2)
   soldById          String     @map("sold_by") @db.Uuid
   saleDate          DateTime   @default(now()) @map("sale_date")
   status            SaleStatus @default(COMPLETED)

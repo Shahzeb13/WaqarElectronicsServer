@@ -6,6 +6,7 @@ import { canCreateRole } from '../types/auth.js';
 import { Role } from '@prisma/client';
 
 export const login = async (req: Request, res: Response) => {
+  console.log("login route hit");
   const { email, password } = req.body;
 
   try {
@@ -21,12 +22,20 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    const userWithBranch = await prisma.user.findUnique({
+      where: { email },
+      include: { branch: { select: { id: true, name: true } } }
+    });
+
+    if (!userWithBranch) return res.status(401).json({ message: 'User not found' });
+
     const payload = {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      branchId: user.branchId,
+      id: userWithBranch.id,
+      name: userWithBranch.name,
+      email: userWithBranch.email,
+      role: userWithBranch.role,
+      branchId: userWithBranch.branchId,
+      branch: userWithBranch.branch,
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '1d' });
@@ -142,6 +151,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
 };
 
 export const logout = (req: Request, res: Response) => {
+  console.log("Logout route hit");
   res.clearCookie('token');
   res.json({ message: 'Logged out successfully' });
 };
