@@ -63,11 +63,16 @@ export const getStockById = async (req: Request, res: Response) => {
  * Create new stock item
  */
 export const createStock = async (req: Request, res: Response) => {
+  console.log("Stock creation route hit:", req.body);
   const { branchId, name, category, description, purchasePrice, salePrice, quantity, lowStockThreshold } = req.body;
   const createdById = req.user?.id;
 
-  if (!branchId || !createdById || !name || !purchasePrice || !salePrice) {
-    return res.status(400).json({ message: 'Missing required fields' });
+  // Added category to the check as it is required in the schema
+  if (!branchId || !createdById || !name || !category || !purchasePrice || !salePrice) {
+    return res.status(400).json({ 
+      message: 'Missing required fields', 
+      details: { branchId, name, category, purchasePrice, salePrice } 
+    });
   }
 
   try {
@@ -75,10 +80,18 @@ export const createStock = async (req: Request, res: Response) => {
     let imagePublicId = null;
 
     if (req.file) {
-      const cloudinaryRes: any = await uploadLocalFileToCloudinary(req.file.path, 'stock-items');
-      imageUrl = cloudinaryRes.secure_url;
-      imagePublicId = cloudinaryRes.public_id;
+      try {
+        const cloudinaryRes: any = await uploadLocalFileToCloudinary(req.file.path, 'stock-items');
+        imageUrl = cloudinaryRes.secure_url;
+        imagePublicId = cloudinaryRes.public_id;
+      } catch (uploadErr) {
+        console.error("Cloudinary upload failed:", uploadErr);
+        return res.status(500).json({ message: 'Failed to upload image' });
+      }
     }
+
+    const parsedQty = parseInt(quantity) || 0;
+    const parsedThreshold = parseInt(lowStockThreshold) || 5;
 
     const newItem = await prisma.stockItem.create({
       data: {
@@ -86,10 +99,10 @@ export const createStock = async (req: Request, res: Response) => {
         name,
         category,
         description,
-        purchasePrice: Number(purchasePrice),
-        salePrice: Number(salePrice),
-        quantity: parseInt(quantity || 0),
-        lowStockThreshold: parseInt(lowStockThreshold || 5),
+        purchasePrice: parseFloat(purchasePrice),
+        salePrice: parseFloat(salePrice),
+        quantity: parsedQty,
+        lowStockThreshold: parsedThreshold,
         createdById,
         imageUrl,
         imagePublicId
@@ -97,20 +110,24 @@ export const createStock = async (req: Request, res: Response) => {
     });
 
     // Create history entry if initial quantity is > 0
-    if (parseInt(quantity) > 0) {
+    if (parsedQty > 0) {
       await prisma.stockHistory.create({
         data: {
           stockItemId: newItem.id,
-          quantityAdded: parseInt(quantity),
-          addedById,
+          quantityAdded: parsedQty,
+          addedById: createdById,
           notes: 'Initial stock'
         }
       });
     }
 
     res.status(201).json({ message: 'Stock item created', item: newItem });
-  } catch (error) {
-    res.status(500).json({ message: 'Error creating stock item', error });
+  } catch (error: any) {
+    console.error("Prisma Create Stock Error:", error);
+    res.status(500).json({ 
+      message: 'Error creating stock item', 
+      error: error.message || error 
+    });
   }
 };
 
@@ -119,7 +136,7 @@ export const createStock = async (req: Request, res: Response) => {
  */
 export const updateStock = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, category, description, purchasePrice, salePrice, lowStockThreshold } = req.body;
+  const { name, category, description, purchasePrice, salePrice, lowStockThreshold, branchId } = req.body;
 
   try {
     const existingItem = await prisma.stockItem.findUnique({ where: { id } });
@@ -129,9 +146,14 @@ export const updateStock = async (req: Request, res: Response) => {
     let imagePublicId = existingItem.imagePublicId;
 
     if (req.file) {
-      const cloudinaryRes: any = await uploadLocalFileToCloudinary(req.file.path, 'stock-items');
-      imageUrl = cloudinaryRes.secure_url;
-      imagePublicId = cloudinaryRes.public_id;
+      try {
+        const cloudinaryRes: any = await uploadLocalFileToCloudinary(req.file.path, 'stock-items');
+        imageUrl = cloudinaryRes.secure_url;
+        imagePublicId = cloudinaryRes.public_id;
+      } catch (uploadErr) {
+        console.error("Cloudinary upload failed during update:", uploadErr);
+        return res.status(500).json({ message: 'Failed to upload new image' });
+      }
     }
 
     const updatedItem = await prisma.stockItem.update({
@@ -139,18 +161,23 @@ export const updateStock = async (req: Request, res: Response) => {
       data: {
         name: name || existingItem.name,
         category: category || existingItem.category,
-        description: description || existingItem.description,
-        purchasePrice: purchasePrice ? Number(purchasePrice) : existingItem.purchasePrice,
-        salePrice: salePrice ? Number(salePrice) : existingItem.salePrice,
+        description: description !== undefined ? description : existingItem.description,
+        purchasePrice: purchasePrice ? parseFloat(purchasePrice) : existingItem.purchasePrice,
+        salePrice: salePrice ? parseFloat(salePrice) : existingItem.salePrice,
         lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold) : existingItem.lowStockThreshold,
+        branchId: branchId || existingItem.branchId,
         imageUrl,
         imagePublicId
       }
     });
 
     res.json({ message: 'Stock item updated', item: updatedItem });
-  } catch (error) {
-    res.status(500).json({ message: 'Error updating stock item', error });
+  } catch (error: any) {
+    console.error("Prisma Update Stock Error:", error);
+    res.status(500).json({ 
+      message: 'Error updating stock item', 
+      error: error.message || error 
+    });
   }
 };
 
@@ -162,7 +189,12 @@ export const addStockQuantity = async (req: Request, res: Response) => {
   const { quantity, supplier, notes } = req.body;
   const addedById = req.user?.id;
 
-  if (!quantity || !addedById) return res.status(400).json({ message: 'Quantity is required' });
+  const parsedQty = parseInt(quantity);
+  if (!quantity || isNaN(parsedQty) || parsedQty <= 0) {
+    return res.status(400).json({ message: 'A valid positive quantity is required' });
+  }
+
+  if (!addedById) return res.status(401).json({ message: 'User identity missing' });
 
   try {
     const item = await prisma.stockItem.findUnique({ where: { id } });
@@ -170,13 +202,13 @@ export const addStockQuantity = async (req: Request, res: Response) => {
 
     const updatedItem = await prisma.stockItem.update({
       where: { id },
-      data: { quantity: { increment: parseInt(quantity) } }
+      data: { quantity: { increment: parsedQty } }
     });
 
     await prisma.stockHistory.create({
       data: {
         stockItemId: id,
-        quantityAdded: parseInt(quantity),
+        quantityAdded: parsedQty,
         supplier,
         notes,
         addedById
@@ -184,8 +216,12 @@ export const addStockQuantity = async (req: Request, res: Response) => {
     });
 
     res.json({ message: 'Stock quantity updated', item: updatedItem });
-  } catch (error) {
-    res.status(500).json({ message: 'Error adding stock quantity', error });
+  } catch (error: any) {
+    console.error("Add Stock Quantity Error:", error);
+    res.status(500).json({ 
+      message: 'Error adding stock quantity', 
+      error: error.message || error 
+    });
   }
 };
 
@@ -195,11 +231,40 @@ export const addStockQuantity = async (req: Request, res: Response) => {
 export const deleteStock = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    // Note: Stock history, sales, and claims might have foreign key constraints
-    // Depending on the business logic, we might want to soft-delete or handle cascading
+    // 1. Check if item exists and if it has dependent records like Sales or Claims
+    const item = await prisma.stockItem.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: { sales: true, claims: true }
+        }
+      }
+    });
+
+    if (!item) {
+      return res.status(404).json({ message: 'Stock item not found' });
+    }
+
+    if (item._count.sales > 0 || item._count.claims > 0) {
+      return res.status(400).json({ 
+        message: 'Cannot delete item: It is linked to existing sales or claims. Try updating quantity to 0 instead.' 
+      });
+    }
+
+    // 2. Delete related Stock History (this is safe to delete with the item)
+    await prisma.stockHistory.deleteMany({
+      where: { stockItemId: id }
+    });
+
+    // 3. Delete the stock item itself
     await prisma.stockItem.delete({ where: { id } });
+
     res.json({ message: 'Stock item deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Error deleting stock item. It may be linked to sales or history.', error });
+  } catch (error: any) {
+    console.error("Delete Stock Error:", error);
+    res.status(500).json({ 
+      message: 'Error deleting stock item', 
+      error: error.message || error 
+    });
   }
 };

@@ -1,12 +1,262 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  email             String         @unique
+  role              Role           @default(EMPLOYEE)
+  branchId          String?        @map("branch_id") @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at")
+  isActive          Boolean        @default(true) @map("is_active")
+  name              String
+  passwordHash      String         @map("password_hash")
+  phone             String?
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  id                String         @id @default(uuid()) @db.Uuid
+  auditLogs         AuditLog[]
+  managedBranch     Branch?        @relation("BranchManager")
+  assignedClaims    Claim[]        @relation("ClaimAssignedTo")
+  resolvedClaims    Claim[]        @relation("ClaimResolvedBy")
+  createdCustomers  Customer[]     @relation("CustomerCreatedBy")
+  addedExpenses     Expense[]      @relation("ExpenseAddedBy")
+  collectedPayments Installment[]  @relation("CollectedBy")
+  notifications     Notification[]
+  recoveries        Recovery[]     @relation("RecoveryEmployee")
+  salesMade         Sale[]         @relation("SoldBy")
+  addedStockHistory StockHistory[] @relation("AddedBy")
+  createdStockItems StockItem[]    @relation("CreatedBy")
+  branch            Branch?        @relation("UserBranch", fields: [branchId], references: [id])
+
+  @@map("users")
+}
+
+model Branch {
+  id         String      @id @default(uuid()) @db.Uuid
+  name       String
+  address    String
+  phone      String?
+  managerId  String?     @unique @map("manager_id") @db.Uuid
+  isActive   Boolean     @default(true) @map("is_active")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  manager    User?       @relation("BranchManager", fields: [managerId], references: [id])
+  customers  Customer[]
+  expenses   Expense[]
+  recoveries Recovery[]
+  sales      Sale[]
+  stockItems StockItem[]
+  users      User[]      @relation("UserBranch")
+
+  @@map("branches")
+}
+
+model StockItem {
+  id                String         @id @default(uuid()) @db.Uuid
+  branchId          String         @map("branch_id") @db.Uuid
+  name              String
+  category          String
+  description       String?
+  purchasePrice     Decimal        @map("purchase_price") @db.Decimal(10, 2)
+  salePrice         Decimal        @map("sale_price") @db.Decimal(10, 2)
+  quantity          Int            @default(0)
+  lowStockThreshold Int            @default(5) @map("low_stock_threshold")
+  createdById       String         @map("created_by") @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  imagePublicId     String?        @map("image_public_id")
+  imageUrl          String?        @map("image_url")
+  claims            Claim[]
+  sales             Sale[]
+  stockHistory      StockHistory[]
+  branch            Branch         @relation(fields: [branchId], references: [id])
+  createdBy         User           @relation("CreatedBy", fields: [createdById], references: [id])
+
+  @@map("stock_items")
+}
+
+model StockHistory {
+  id            String    @id @default(uuid()) @db.Uuid
+  stockItemId   String    @map("stock_item_id") @db.Uuid
+  quantityAdded Int       @map("quantity_added")
+  supplier      String?
+  addedById     String    @map("added_by") @db.Uuid
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  addedBy       User      @relation("AddedBy", fields: [addedById], references: [id])
+  stockItem     StockItem @relation(fields: [stockItemId], references: [id])
+
+  @@map("stock_history")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id") @db.Uuid
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false) @map("is_read")
+  data      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model Expense {
+  id                 String   @id @default(uuid()) @db.Uuid
+  branchId           String   @map("branch_id") @db.Uuid
+  category           String
+  subCategory        String?  @map("sub_category")
+  amount             Decimal  @db.Decimal(10, 2)
+  description        String?
+  expenseDate        DateTime @map("expense_date")
+  receiptUrl         String?  @map("receipt_url")
+  isRecurring        Boolean  @default(false) @map("is_recurring")
+  recurringFrequency String?  @map("recurring_frequency")
+  addedById          String   @map("added_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  addedBy            User     @relation("ExpenseAddedBy", fields: [addedById], references: [id])
+  branch             Branch   @relation(fields: [branchId], references: [id])
+
+  @@map("expenses")
+}
+
+model Customer {
+  id            String        @id @default(uuid()) @db.Uuid
+  branchId      String        @map("branch_id") @db.Uuid
+  name          String
+  cnic          String        @unique
+  phone         String
+  address       String
+  creditScore   Int?          @map("credit_score")
+  isBlacklisted Boolean       @default(false) @map("is_blacklisted")
+  createdById   String        @map("created_by") @db.Uuid
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  claims        Claim[]
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  createdBy     User          @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+  installments  Installment[]
+  recoveries    Recovery[]
+  sales         Sale[]
+
+  @@map("customers")
+}
+
+model Sale {
+  id                String        @id @default(uuid()) @db.Uuid
+  customerId        String        @map("customer_id") @db.Uuid
+  itemId            String        @map("item_id") @db.Uuid
+  branchId          String        @map("branch_id") @db.Uuid
+  saleType          SaleType      @map("sale_type")
+  salePrice         Decimal       @map("sale_price") @db.Decimal(10, 2)
+  installmentMonths Int?          @map("installment_months")
+  monthlyAmount     Decimal?      @map("monthly_amount") @db.Decimal(10, 2)
+  downPayment       Decimal?      @map("down_payment") @db.Decimal(10, 2)
+  soldById          String        @map("sold_by") @db.Uuid
+  saleDate          DateTime      @default(now()) @map("sale_date")
+  status            SaleStatus    @default(COMPLETED)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  paidAmount        Decimal       @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  remainingAmount   Decimal       @default(0) @map("remaining_amount") @db.Decimal(10, 2)
+  claims            Claim[]
+  installments      Installment[]
+  recoveries        Recovery[]
+  branch            Branch        @relation(fields: [branchId], references: [id])
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  item              StockItem     @relation(fields: [itemId], references: [id])
+  soldBy            User          @relation("SoldBy", fields: [soldById], references: [id])
+
+  @@map("sales")
+}
+
+model Installment {
+  id            String            @id @default(uuid()) @db.Uuid
+  saleId        String            @map("sale_id") @db.Uuid
+  customerId    String            @map("customer_id") @db.Uuid
+  dueDate       DateTime          @map("due_date")
+  amount        Decimal           @db.Decimal(10, 2)
+  paidAmount    Decimal           @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  status        InstallmentStatus @default(PENDING)
+  paidDate      DateTime?         @map("paid_date")
+  collectedById String?           @map("collected_by") @db.Uuid
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  collectedBy   User?             @relation("CollectedBy", fields: [collectedById], references: [id])
+  customer      Customer          @relation(fields: [customerId], references: [id])
+  sale          Sale              @relation(fields: [saleId], references: [id])
+  recoveries    Recovery[]
+
+  @@map("installments")
+}
+
+model Claim {
+  id                     String      @id @default(uuid()) @db.Uuid
+  saleId                 String      @map("sale_id") @db.Uuid
+  itemId                 String      @map("item_id") @db.Uuid
+  customerId             String      @map("customer_id") @db.Uuid
+  branchId               String      @map("branch_id") @db.Uuid
+  issueDescription       String      @map("issue_description")
+  claimDate              DateTime    @default(now()) @map("claim_date")
+  status                 ClaimStatus @default(PENDING)
+  priority               String      @default("MEDIUM")
+  assignedToId           String?     @map("assigned_to") @db.Uuid
+  reportedResolutionDate DateTime?   @map("reported_resolution_date")
+  resolutionDate         DateTime?   @map("resolution_date")
+  resolvedById           String?     @map("resolved_by") @db.Uuid
+  resolutionNotes        String?     @map("resolution_notes")
+  resolutionCost         Decimal?    @map("resolution_cost") @db.Decimal(10, 2)
+  createdAt              DateTime    @default(now()) @map("created_at")
+  updatedAt              DateTime    @updatedAt @map("updated_at")
+  assignedTo             User?       @relation("ClaimAssignedTo", fields: [assignedToId], references: [id])
+  customer               Customer    @relation(fields: [customerId], references: [id])
+  item                   StockItem   @relation(fields: [itemId], references: [id])
+  resolvedBy             User?       @relation("ClaimResolvedBy", fields: [resolvedById], references: [id])
+  sale                   Sale        @relation(fields: [saleId], references: [id])
+
+  @@map("claims")
+}
+
+model Recovery {
+  id             String       @id @default(uuid()) @db.Uuid
+  installmentId  String?      @map("installment_id") @db.Uuid
+  saleId         String       @map("sale_id") @db.Uuid
+  customerId     String       @map("customer_id") @db.Uuid
+  employeeId     String       @map("employee_id") @db.Uuid
+  branchId       String       @map("branch_id") @db.Uuid
+  amount         Decimal      @db.Decimal(10, 2)
+  collectionDate DateTime     @default(now()) @map("collection_date")
+  paymentMethod  String       @map("payment_method")
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  branch         Branch       @relation(fields: [branchId], references: [id])
+  customer       Customer     @relation(fields: [customerId], references: [id])
+  employee       User         @relation("RecoveryEmployee", fields: [employeeId], references: [id])
+  installment    Installment? @relation(fields: [installmentId], references: [id])
+  sale           Sale         @relation(fields: [saleId], references: [id])
+
+  @@map("recovery")
 }
 
 enum Role {
@@ -38,282 +288,4 @@ enum ClaimStatus {
   IN_PROGRESS
   RESOLVED
   REJECTED
-}
-
-model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  branchId     String?  @map("branch_id") @db.Uuid
-  name         String
-  email        String   @unique
-  phone        String?
-  passwordHash String   @map("password_hash")
-  role         Role     @default(EMPLOYEE)
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  branch            Branch?           @relation("UserBranch", fields: [branchId], references: [id])
-  managedBranch     Branch?           @relation("BranchManager")
-  createdStockItems StockItem[]       @relation("CreatedBy")
-  addedStockHistory StockHistory[]    @relation("AddedBy")
-  auditLogs         AuditLog[]
-  notifications     Notification[]
-  addedExpenses     Expense[]         @relation("ExpenseAddedBy")
-  createdCustomers  Customer[]        @relation("CustomerCreatedBy")
-  salesMade         Sale[]            @relation("SoldBy")
-  collectedPayments Installment[]     @relation("CollectedBy")
-  assignedClaims    Claim[]           @relation("ClaimAssignedTo")
-  resolvedClaims    Claim[]           @relation("ClaimResolvedBy")
-  recoveries        Recovery[]        @relation("RecoveryEmployee")
-
-
-  @@map("users")
-}
-
-model Branch {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  address   String
-  phone     String?
-  managerId String?  @unique @map("manager_id") @db.Uuid
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  manager    User?      @relation("BranchManager", fields: [managerId], references: [id])
-  users      User[]     @relation("UserBranch")
-  stockItems StockItem[]
-  expenses   Expense[]
-  customers  Customer[]
-  sales      Sale[]
-  recoveries Recovery[]
-
-  @@map("branches")
-}
-
-model StockItem {
-  id                String   @id @default(uuid()) @db.Uuid
-  branchId          String   @map("branch_id") @db.Uuid
-  name              String
-  category          String
-  description       String?
-  purchasePrice     Decimal  @map("purchase_price") @db.Decimal(10, 2)
-  salePrice         Decimal  @map("sale_price") @db.Decimal(10, 2)
-  quantity          Int      @default(0)
-  lowStockThreshold Int      @default(5) @map("low_stock_threshold")
-  imageUrl          String?  @map("image_url")
-  imagePublicId     String?  @map("image_public_id")
-  createdById       String   @map("created_by") @db.Uuid
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  branch       Branch         @relation(fields: [branchId], references: [id])
-  createdBy    User           @relation("CreatedBy", fields: [createdById], references: [id])
-  stockHistory StockHistory[]
-  sales        Sale[]
-  claims       Claim[]
-
-  @@map("stock_items")
-}
-
-model StockHistory {
-  id            String   @id @default(uuid()) @db.Uuid
-  stockItemId   String   @map("stock_item_id") @db.Uuid
-  quantityAdded Int      @map("quantity_added")
-  supplier      String?
-  addedById     String   @map("added_by") @db.Uuid
-  notes         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  // Relations
-  stockItem StockItem @relation(fields: [stockItemId], references: [id])
-  addedBy   User      @relation("AddedBy", fields: [addedById], references: [id])
-
-  @@map("stock_history")
-}
-
-model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  action     String
-  entityType String   @map("entity_type")
-  entityId   String   @map("entity_id") @db.Uuid
-  oldValues  Json?    @map("old_values")
-  newValues  Json?    @map("new_values")
-  ipAddress  String?  @map("ip_address")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id])
-
-  @@map("audit_logs")
-}
-
-model Notification {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  type      String
-  title     String
-  message   String
-  isRead    Boolean  @default(false) @map("is_read")
-  data      Json?
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // Relations
-  user User @relation(fields: [userId], references: [id])
-
-  @@map("notifications")
-}
-
-model Expense {
-  id                 String   @id @default(uuid()) @db.Uuid
-  branchId           String   @map("branch_id") @db.Uuid
-  category           String
-  subCategory        String?  @map("sub_category")
-  amount             Decimal  @db.Decimal(10, 2)
-  description        String?
-  expenseDate        DateTime @map("expense_date")
-  receiptUrl         String?  @map("receipt_url")
-  isRecurring        Boolean  @default(false) @map("is_recurring")
-  recurringFrequency String?  @map("recurring_frequency")
-  addedById          String   @map("added_by") @db.Uuid
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  branch  Branch @relation(fields: [branchId], references: [id])
-  addedBy User   @relation("ExpenseAddedBy", fields: [addedById], references: [id])
-
-  @@map("expenses")
-}
-
-model Customer {
-  id            String   @id @default(uuid()) @db.Uuid
-  branchId      String   @map("branch_id") @db.Uuid
-  name          String
-  cnic          String   @unique
-  phone         String
-  address       String
-  creditScore   Int?     @map("credit_score")
-  isBlacklisted Boolean  @default(false) @map("is_blacklisted")
-  createdById   String   @map("created_by") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  branch       Branch        @relation(fields: [branchId], references: [id])
-  createdBy    User          @relation("CustomerCreatedBy", fields: [createdById], references: [id])
-  sales        Sale[]
-  installments Installment[]
-  claims       Claim[]
-  recoveries   Recovery[]
-
-  @@map("customers")
-}
-
-model Sale {
-  id                String     @id @default(uuid()) @db.Uuid
-  customerId        String     @map("customer_id") @db.Uuid
-  itemId            String     @map("item_id") @db.Uuid
-  branchId          String     @map("branch_id") @db.Uuid
-  saleType          SaleType   @map("sale_type")
-  salePrice         Decimal    @map("sale_price") @db.Decimal(10, 2)
-  installmentMonths Int?       @map("installment_months")
-  monthlyAmount     Decimal?   @map("monthly_amount") @db.Decimal(10, 2)
-  downPayment       Decimal?   @map("down_payment") @db.Decimal(10, 2)
-  paidAmount      Decimal @default(0) @map("paid_amount") @db.Decimal(10, 2)
-  remainingAmount Decimal @default(0) @map("remaining_amount") @db.Decimal(10, 2)
-  soldById          String     @map("sold_by") @db.Uuid
-  saleDate          DateTime   @default(now()) @map("sale_date")
-  status            SaleStatus @default(COMPLETED)
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
-
-  // Relations
-  customer     Customer      @relation(fields: [customerId], references: [id])
-  item         StockItem     @relation(fields: [itemId], references: [id])
-  branch       Branch        @relation(fields: [branchId], references: [id])
-  soldBy       User          @relation("SoldBy", fields: [soldById], references: [id])
-  installments Installment[]
-  claims       Claim[]
-  recoveries   Recovery[]
-
-  @@map("sales")
-}
-
-model Installment {
-  id            String            @id @default(uuid()) @db.Uuid
-  saleId        String            @map("sale_id") @db.Uuid
-  customerId    String            @map("customer_id") @db.Uuid
-  dueDate       DateTime          @map("due_date")
-  amount        Decimal           @db.Decimal(10, 2)
-  paidAmount    Decimal           @default(0) @map("paid_amount") @db.Decimal(10, 2)
-  status        InstallmentStatus @default(PENDING)
-  paidDate      DateTime?         @map("paid_date")
-  collectedById String?           @map("collected_by") @db.Uuid
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
-
-  // Relations
-  sale        Sale       @relation(fields: [saleId], references: [id])
-  customer    Customer   @relation(fields: [customerId], references: [id])
-  collectedBy User?      @relation("CollectedBy", fields: [collectedById], references: [id])
-  recoveries  Recovery[]
-
-  @@map("installments")
-}
-
-model Claim {
-  id                     String      @id @default(uuid()) @db.Uuid
-  saleId                 String      @map("sale_id") @db.Uuid
-  itemId                 String      @map("item_id") @db.Uuid
-  customerId             String      @map("customer_id") @db.Uuid
-  branchId               String      @map("branch_id") @db.Uuid
-  issueDescription       String      @map("issue_description")
-  claimDate              DateTime    @default(now()) @map("claim_date")
-  status                 ClaimStatus @default(PENDING)
-  priority               String      @default("MEDIUM")
-  assignedToId           String?     @map("assigned_to") @db.Uuid
-  reportedResolutionDate DateTime?   @map("reported_resolution_date")
-  resolutionDate         DateTime?   @map("resolution_date")
-  resolvedById           String?     @map("resolved_by") @db.Uuid
-  resolutionNotes        String?     @map("resolution_notes")
-  resolutionCost         Decimal?    @map("resolution_cost") @db.Decimal(10, 2)
-  createdAt              DateTime    @default(now()) @map("created_at")
-  updatedAt              DateTime    @updatedAt @map("updated_at")
-
-  // Relations
-  sale       Sale      @relation(fields: [saleId], references: [id])
-  item       StockItem @relation(fields: [itemId], references: [id])
-  customer   Customer  @relation(fields: [customerId], references: [id])
-  assignedTo User?     @relation("ClaimAssignedTo", fields: [assignedToId], references: [id])
-  resolvedBy User?     @relation("ClaimResolvedBy", fields: [resolvedById], references: [id])
-
-  @@map("claims")
-}
-
-model Recovery {
-  id             String   @id @default(uuid()) @db.Uuid
-  installmentId  String?  @map("installment_id") @db.Uuid
-  saleId         String   @map("sale_id") @db.Uuid
-  customerId     String   @map("customer_id") @db.Uuid
-  employeeId     String   @map("employee_id") @db.Uuid
-  branchId       String   @map("branch_id") @db.Uuid
-  amount         Decimal  @db.Decimal(10, 2)
-  collectionDate DateTime @default(now()) @map("collection_date")
-  paymentMethod  String   @map("payment_method")
-  notes          String?
-  createdAt      DateTime @default(now()) @map("created_at")
-
-  // Relations
-  installment Installment? @relation(fields: [installmentId], references: [id])
-  sale        Sale         @relation(fields: [saleId], references: [id])
-  customer    Customer     @relation(fields: [customerId], references: [id])
-  employee    User         @relation("RecoveryEmployee", fields: [employeeId], references: [id])
-  branch      Branch       @relation(fields: [branchId], references: [id])
-
-  @@map("recovery")
 }
